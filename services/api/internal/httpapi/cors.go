@@ -13,11 +13,11 @@ func withAllowedOrigin(allowedOrigin string, next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.Header().Add("Vary", "Origin")
-		}
 
-		if request.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+			if request.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 		}
 
 		next.ServeHTTP(w, request)
