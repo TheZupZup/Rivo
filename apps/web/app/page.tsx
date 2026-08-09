@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const principles = [
   "A report is not a conviction.",
   "New rules do not create retroactive creator strikes.",
@@ -8,6 +10,13 @@ const principles = [
 export default function HomePage() {
   return (
     <main className="page-shell">
+      <nav className="top-nav" aria-label="Primary navigation">
+        <span className="brand-link">Rivo</span>
+        <Link className="primary-link" href="/upload">
+          Upload a video
+        </Link>
+      </nav>
+
       <section className="hero">
         <p className="eyebrow">Working prototype</p>
         <h1>A video platform built around creator trust.</h1>
