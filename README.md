@@ -77,6 +77,24 @@ npm run dev
 
 The web app listens on `http://localhost:3000`.
 
+### Test a local video upload
+
+The upload prototype streams a multipart video directly into the configured local `VideoStore`.
+
+```bash
+curl -X POST \
+  -F "video=@/path/to/video.mp4" \
+  http://localhost:8080/api/videos
+```
+
+Or open `http://localhost:3000/upload`. If the API is running on a different port, configure the web app before starting it:
+
+```bash
+NEXT_PUBLIC_RIVO_API_URL=http://127.0.0.1:8081 npm run dev
+```
+
+Uploaded sources are stored under `VIDEO_STORAGE_PATH/videos/<video-id>/source`. FFmpeg transcoding and playback are intentionally the next milestone.
+
 ## Moderation invariant
 
 A rule may only be used for a creator-policy sanction when that rule was active for the revision being judged.

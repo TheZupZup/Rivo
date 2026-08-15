@@ -6,6 +6,7 @@ type Config struct {
 	HTTPAddress      string
 	DatabaseURL      string
 	VideoStoragePath string
+	WebOrigin        string
 }
 
 func Load() Config {
@@ -13,6 +14,7 @@ func Load() Config {
 		HTTPAddress:      envOrDefault("HTTP_ADDRESS", ":8080"),
 		DatabaseURL:      envOrDefault("DATABASE_URL", "postgres://rivo:rivo_dev@localhost:5432/rivo?sslmode=disable"),
 		VideoStoragePath: envOrDefault("VIDEO_STORAGE_PATH", "../../data/videos"),
+		WebOrigin:        envOrDefault("WEB_ORIGIN", "http://localhost:3000"),
 	}
 }
 
