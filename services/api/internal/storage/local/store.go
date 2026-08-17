@@ -28,17 +28,28 @@ func New(root string) (*Store, error) {
 	return &Store{root: absoluteRoot}, nil
 }
 
-func (store *Store) Save(_ context.Context, key string, source io.Reader) error {
+func (store *Store) Save(_ context.Context, key string, source io.Reader) (err error) {
 	path, err := store.pathForKey(key)
 	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return err
 	}
 
-	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".upload-*")
+	// An upload that fails part way through — a truncated stream, a client that
+	// exceeded the size limit — must not leave the directory it created behind.
+	// Without this, repeatedly failing uploads accumulate empty directories and
+	// eventually exhaust inodes.
+	defer func() {
+		if err != nil {
+			store.pruneEmptyParents(directory)
+		}
+	}()
+
+	temporaryFile, err := os.CreateTemp(directory, ".upload-*")
 	if err != nil {
 		return err
 	}
@@ -46,16 +57,17 @@ func (store *Store) Save(_ context.Context, key string, source io.Reader) error 
 	temporaryPath := temporaryFile.Name()
 	defer os.Remove(temporaryPath)
 
-	if _, err := io.Copy(temporaryFile, source); err != nil {
+	if _, err = io.Copy(temporaryFile, source); err != nil {
 		temporaryFile.Close()
 		return err
 	}
 
-	if err := temporaryFile.Close(); err != nil {
+	if err = temporaryFile.Close(); err != nil {
 		return err
 	}
 
-	return os.Rename(temporaryPath, path)
+	err = os.Rename(temporaryPath, path)
+	return err
 }
 
 func (store *Store) Open(_ context.Context, key string) (io.ReadCloser, error) {
@@ -74,11 +86,27 @@ func (store *Store) Delete(_ context.Context, key string) error {
 	}
 
 	err = os.Remove(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 
-	return err
+	store.pruneEmptyParents(filepath.Dir(path))
+
+	return nil
+}
+
+// pruneEmptyParents removes the per-video directories a deleted object leaves
+// behind, walking up until it reaches the storage root or a directory that still
+// holds something. os.Remove refuses to delete a non-empty directory, so a failure
+// here simply means there is nothing more to prune.
+func (store *Store) pruneEmptyParents(directory string) {
+	for directory != store.root && strings.HasPrefix(directory, store.root+string(filepath.Separator)) {
+		if err := os.Remove(directory); err != nil {
+			return
+		}
+
+		directory = filepath.Dir(directory)
+	}
 }
 
 func (store *Store) pathForKey(key string) (string, error) {

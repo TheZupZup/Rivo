@@ -7,7 +7,15 @@ import (
 
 var ErrRuleLookup = errors.New("rule applicability lookup failed")
 
+// ContentRevision is the server-owned view of one revision of a video.
+//
+// It is always resolved from stored data, never from the request body: the ruleset
+// recorded here is what decides whether a rule may be applied at all, so a client
+// that could influence it could defeat non-retroactive enforcement.
 type ContentRevision struct {
+	ID             string
+	VideoID        string
+	Kind           string
 	RulesetID      string
 	RulesetVersion string
 }

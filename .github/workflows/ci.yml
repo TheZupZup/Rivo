@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The workflow only ever reads the repository. Nothing here publishes, comments or
+# deploys, so nothing here needs a token that could.
+permissions:
+  contents: read
+
+# Superseded pull request runs are pointless work; pushes to main are not, because
+# each one is a distinct commit somebody may need the result for.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  # A workflow file that does not parse does not run, so a mistake here disables
+  # every check below without turning anything red. That failure mode is worth a
+  # job of its own — and worth running locally with `make lint-ci` before pushing.
+  workflows:
+    name: Workflows and scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          # Not go.mod: actionlint needs a newer toolchain than the API targets.
+          go-version: "1.24"
+
+      - name: Lint workflows
+        # Pinned rather than @latest: a linter that changes under you turns an
+        # unrelated pull request red. actionlint also runs shellcheck over every
+        # run block, so the scripts embedded here are checked too.
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+
+  api:
+    name: Go API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          # Read from go.mod so the toolchain is defined in one place.
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+
+      - name: Check formatting
+        working-directory: services/api
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "These files need gofmt:"
+            echo "${unformatted}"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Vet
+        working-directory: services/api
+        run: go vet ./...
+
+      - name: Test
+        working-directory: services/api
+        # The rate limiter shares state across requests, so the race detector is
+        # not optional here.
+        run: go test -race ./...
+
+      - name: Build
+        working-directory: services/api
+        run: go build ./...
+
+      - name: Check that go.mod and go.sum are tidy
+        working-directory: services/api
+        run: |
+          go mod tidy
+          if ! git diff --quiet -- go.mod go.sum; then
+            echo "go.mod or go.sum is out of date. Run 'go mod tidy' and commit the result."
+            git diff -- go.mod go.sum
+            exit 1
+          fi
+
+  database:
+    name: Database
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Matches deploy/compose.yaml, so CI and local development agree.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: rivo
+          POSTGRES_USER: rivo
+          POSTGRES_PASSWORD: rivo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rivo -d rivo"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://rivo:rivo_ci@localhost:5432/rivo?sslmode=disable
+      PGPASSWORD: rivo_ci
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+
+      - name: Apply migrations
+        run: make db-migrate
+
+      - name: Load the development seed
+        run: make db-seed
+
+      - name: Check the seed is idempotent
+        # Contributors re-run this against a database that already has data;
+        # a seed that only works once is a seed that breaks their afternoon.
+        run: make db-seed
+
+      - name: Verify the moderation invariants
+        run: make db-verify
+
+      - name: Apply the least-privilege application role
+        run: |
+          psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -v app_password="${APP_PASSWORD}" \
+            -f database/roles/app_role.sql
+        env:
+          APP_PASSWORD: rivo_app_ci
+
+      - name: Verify the application role cannot rewrite history
+        run: |
+          psql "postgres://rivo_app:rivo_app_ci@localhost:5432/rivo?sslmode=disable" \
+            -v ON_ERROR_STOP=1 -f database/tests/app_role.sql
+
+      - name: Smoke test the API against the database
+        run: make smoke
+
+  web:
+    name: Web app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        # ci, not install: the lockfile is the input, and a build that silently
+        # resolves different versions than the one under review is not a check.
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  # A single job to require in branch protection, so adding a check above does not
+  # mean editing repository settings.
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [workflows, api, database, web]
+    if: always()
+    steps:
+      - name: Check that every job succeeded
+        # Passed through the environment rather than interpolated into the script,
+        # which is the pattern that keeps expression values out of the shell parser.
+        env:
+          JOB_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          # Anything other than success — failure, cancellation, or a job that was
+          # skipped and therefore never proved anything — is not a green build.
+          echo "Job results: ${JOB_RESULTS}"
+          for result in ${JOB_RESULTS}; do
+            if [ "${result}" != "success" ]; then
+              exit 1
+            fi
+          done

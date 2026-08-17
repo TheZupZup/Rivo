@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/TheZupZup/Rivo/services/api/internal/auth"
 	platformvideo "github.com/TheZupZup/Rivo/services/api/internal/platform/video"
 )
 
@@ -27,27 +29,29 @@ func NewVideoUploadHandler(uploadService platformvideo.UploadService, maxUploadB
 }
 
 func (handler VideoUploadHandler) Upload(w http.ResponseWriter, request *http.Request) {
+	identity, _ := auth.IdentityFrom(request.Context())
+
 	request.Body = http.MaxBytesReader(w, request.Body, handler.maxUploadBytes)
 
 	multipartReader, err := request.MultipartReader()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "request must use multipart/form-data")
+		WriteError(w, http.StatusBadRequest, "request must use multipart/form-data")
 		return
 	}
 
 	for {
 		part, err := multipartReader.NextPart()
 		if errors.Is(err, io.EOF) {
-			writeError(w, http.StatusBadRequest, "video file is required")
+			WriteError(w, http.StatusBadRequest, "video file is required")
 			return
 		}
 		if err != nil {
 			if isRequestTooLarge(err) {
-				writeError(w, http.StatusRequestEntityTooLarge, "video upload exceeds the current 1 GiB limit")
+				handler.writeTooLarge(w)
 				return
 			}
 
-			writeError(w, http.StatusBadRequest, "could not read multipart upload")
+			WriteError(w, http.StatusBadRequest, "could not read multipart upload")
 			return
 		}
 
@@ -57,9 +61,9 @@ func (handler VideoUploadHandler) Upload(w http.ResponseWriter, request *http.Re
 		}
 
 		result, err := handler.uploadService.Upload(request.Context(), platformvideo.UploadRequest{
-			FileName:    part.FileName(),
-			ContentType: part.Header.Get("Content-Type"),
-			Source:      part,
+			FileName:        part.FileName(),
+			PublisherUserID: identity.UserID,
+			Source:          part,
 		})
 		_ = part.Close()
 		if err != nil {
@@ -67,7 +71,7 @@ func (handler VideoUploadHandler) Upload(w http.ResponseWriter, request *http.Re
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, result)
+		WriteJSON(w, http.StatusCreated, result)
 		return
 	}
 }
@@ -75,12 +79,20 @@ func (handler VideoUploadHandler) Upload(w http.ResponseWriter, request *http.Re
 func (handler VideoUploadHandler) writeUploadError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, platformvideo.ErrEmptyVideo), errors.Is(err, platformvideo.ErrMissingVideo):
-		writeError(w, http.StatusBadRequest, err.Error())
+		WriteError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, platformvideo.ErrUnsupportedContainer):
+		WriteError(w, http.StatusUnsupportedMediaType, "upload must be an MP4, WebM, Matroska, AVI, MPEG, FLV or Ogg video")
 	case isRequestTooLarge(err):
-		writeError(w, http.StatusRequestEntityTooLarge, "video upload exceeds the current 1 GiB limit")
+		handler.writeTooLarge(w)
 	default:
-		writeError(w, http.StatusInternalServerError, "video upload failed")
+		WriteError(w, http.StatusInternalServerError, "video upload failed")
 	}
+}
+
+func (handler VideoUploadHandler) writeTooLarge(w http.ResponseWriter) {
+	WriteError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf(
+		"video upload exceeds the current %d byte limit", handler.maxUploadBytes,
+	))
 }
 
 func isRequestTooLarge(err error) bool {
