@@ -13,6 +13,7 @@ Rivo is early-stage software. The goal is to keep contributions small, reviewabl
 - `apps/web/` — Next.js and TypeScript user interface
 - `services/api/` — Go API and domain logic
 - `database/migrations/` — PostgreSQL schema
+- `database/seed/` — development seed data
 - `docs/moderation/` — moderation invariants and policy design
 - `docs/architecture/` — technical architecture
 - `deploy/` — local development infrastructure
@@ -22,6 +23,7 @@ Rivo is early-stage software. The goal is to keep contributions small, reviewabl
 - Prefer simple code over clever abstractions.
 - Add tests for domain rules and bug fixes.
 - Never trust moderation-critical facts supplied by the browser when the server can derive them.
+- Express moderation invariants as database constraints where a constraint can express them. Application checks are for good error messages; the schema is what makes a bad state impossible.
 - Keep storage and infrastructure replaceable behind narrow interfaces.
 - Explain behavior changes in the pull request description.
 
@@ -29,6 +31,20 @@ Rivo is early-stage software. The goal is to keep contributions small, reviewabl
 
 ```bash
 make api-test
+```
+
+Before opening a pull request, run the full check — formatting, vet and tests:
+
+```bash
+make api-check
+```
+
+Changes touching the schema should be verified against a real database, not only
+through unit tests:
+
+```bash
+make db-up
+make db-reset
 ```
 
 ## Commit messages

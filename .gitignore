@@ -5,6 +5,7 @@ node_modules/
 dist/
 bin/
 coverage/
+*.tsbuildinfo
 *.log
 .DS_Store
 .idea/
