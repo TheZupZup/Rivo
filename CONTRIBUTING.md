@@ -65,12 +65,17 @@ make check
 
 | Job | What it proves |
 | --- | --- |
+| Workflows and scripts | the workflow files parse and the shell scripts lint |
 | Go API | formatted, vets clean, tests pass under the race detector, builds, dependencies tidy |
 | Database | migrations apply in order, the seed is idempotent, every moderation invariant is enforced, the application role cannot rewrite history, and the real binary behaves correctly over HTTP |
 | Web app | installs from the lockfile, typechecks, builds |
 
-Branch protection should require the single `CI` check, which passes only when all
-three succeed. Adding a job above does not mean editing repository settings.
+Branch protection should require the single `CI` check, which passes only when
+every job succeeds. Adding a job above does not mean editing repository settings.
+
+Run `make lint-ci` before pushing a change to `.github/workflows/`. A workflow file
+that does not parse never runs, so CI cannot be the thing that tells you it is
+broken — the run fails with no jobs and no explanation.
 
 Web dependencies install with `npm ci` from `package-lock.json`. If you change
 `apps/web/package.json`, commit the updated lockfile with it.

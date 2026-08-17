@@ -1,4 +1,4 @@
-.PHONY: api-test api-check api-run db-up db-down db-migrate db-seed db-verify db-reset smoke check
+.PHONY: api-test api-check api-run db-up db-down db-migrate db-seed db-verify db-reset smoke lint-ci check
 
 DATABASE_URL ?= postgres://rivo:rivo_dev@localhost:5432/rivo?sslmode=disable
 
@@ -39,5 +39,11 @@ db-reset: db-migrate db-seed
 smoke:
 	DATABASE_URL="$(DATABASE_URL)" scripts/smoke.sh
 
+# A broken workflow file does not run, so CI cannot tell you it is broken.
+# Check it here instead.
+lint-ci:
+	go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+	shellcheck scripts/*.sh
+
 # Everything CI runs, against a database you have already started with db-up.
-check: api-check db-verify smoke
+check: lint-ci api-check db-verify smoke

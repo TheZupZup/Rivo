@@ -20,7 +20,8 @@
 
 set -euo pipefail
 
-readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly API_PORT="${SMOKE_API_PORT:-18099}"
 readonly API_URL="http://127.0.0.1:${API_PORT}"
 
@@ -91,9 +92,11 @@ expect_body_contains() {
 # the newer one. Identifiers are generated so repeated runs never collide.
 # ---------------------------------------------------------------------------
 
-readonly RUN_ID="$(od -An -tx1 -N6 /dev/urandom | tr -d ' \n')"
+RUN_ID="$(od -An -tx1 -N6 /dev/urandom | tr -d ' \n')"
+readonly RUN_ID
 readonly API_TOKEN="smoke_${RUN_ID}"
-readonly TOKEN_DIGEST="$(printf '%s' "${API_TOKEN}" | sha256sum | cut -d' ' -f1)"
+TOKEN_DIGEST="$(printf '%s' "${API_TOKEN}" | sha256sum | cut -d' ' -f1)"
+readonly TOKEN_DIGEST
 
 echo "Creating fixture..."
 fixture="$(psql "${DATABASE_URL}" -qtA -v ON_ERROR_STOP=1 <<SQL

@@ -190,6 +190,7 @@ See [`docs/moderation/non-retroactive-enforcement.md`](docs/moderation/non-retro
 ## Checks
 
 ```bash
+make lint-ci     # the workflow files parse and the shell scripts lint
 make api-check   # gofmt, vet, tests under the race detector
 make db-verify   # the moderation invariants are enforced by the schema
 make smoke       # the real binary, driven over HTTP against a real database
