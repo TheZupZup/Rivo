@@ -45,7 +45,35 @@ through unit tests:
 ```bash
 make db-up
 make db-reset
+make db-verify
 ```
+
+`make db-verify` asserts that the moderation invariants really are enforced by the
+schema. If you add a constraint that encodes a policy, add an assertion for it in
+`database/tests/constraints.sql` — a constraint nobody tests is a constraint a
+future migration can quietly drop.
+
+To run everything CI runs, against a database started with `make db-up`:
+
+```bash
+make check
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs three jobs on every pull request:
+
+| Job | What it proves |
+| --- | --- |
+| Go API | formatted, vets clean, tests pass under the race detector, builds, dependencies tidy |
+| Database | migrations apply in order, the seed is idempotent, every moderation invariant is enforced, the application role cannot rewrite history, and the real binary behaves correctly over HTTP |
+| Web app | installs from the lockfile, typechecks, builds |
+
+Branch protection should require the single `CI` check, which passes only when all
+three succeed. Adding a job above does not mean editing repository settings.
+
+Web dependencies install with `npm ci` from `package-lock.json`. If you change
+`apps/web/package.json`, commit the updated lockfile with it.
 
 ## Commit messages
 

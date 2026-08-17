@@ -20,9 +20,12 @@ services/api/              Go HTTP API
 database/migrations/       PostgreSQL schema migrations
 database/seed/             Development seed data
 database/roles/            Least-privilege database role for the API
+database/tests/            Assertions that the moderation invariants hold
 docs/architecture/         Architecture decisions and system design
 docs/moderation/           Moderation policy and invariants
 deploy/                    Local deployment configuration
+scripts/                   End-to-end smoke test
+.github/workflows/         Continuous integration
 ```
 
 ## Current milestone: v0.1 foundation
@@ -183,6 +186,18 @@ names the exact revision it judges, and a composite foreign key forces its
 rule to an older revision cannot be written at all.
 
 See [`docs/moderation/non-retroactive-enforcement.md`](docs/moderation/non-retroactive-enforcement.md).
+
+## Checks
+
+```bash
+make api-check   # gofmt, vet, tests under the race detector
+make db-verify   # the moderation invariants are enforced by the schema
+make smoke       # the real binary, driven over HTTP against a real database
+make check       # all of the above
+```
+
+The same checks run in CI on every pull request. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md#continuous-integration).
 
 ## License
 
