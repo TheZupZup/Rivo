@@ -11,7 +11,7 @@ func withAllowedOrigin(allowedOrigin string, next http.Handler) http.Handler {
 		if request.Header.Get("Origin") == allowedOrigin {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			w.Header().Add("Vary", "Origin")
 
 			if request.Method == http.MethodOptions {

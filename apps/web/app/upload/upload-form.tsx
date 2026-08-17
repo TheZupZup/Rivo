@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type UploadResult = {
   id: string;
@@ -15,17 +15,37 @@ type ErrorResponse = {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_RIVO_API_URL ?? "http://127.0.0.1:8080";
 
+// Uploads are attributable, so the browser has to present a token. It is kept in
+// sessionStorage rather than an environment variable: NEXT_PUBLIC_ values are baked
+// into the client bundle, which is the wrong place for a credential even in
+// development. This whole field disappears once real accounts exist.
+const tokenStorageKey = "rivo.dev.apiToken";
+
 export default function UploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [apiToken, setApiToken] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setApiToken(window.sessionStorage.getItem(tokenStorageKey) ?? "");
+  }, []);
+
+  function handleTokenChange(value: string) {
+    setApiToken(value);
+    window.sessionStorage.setItem(tokenStorageKey, value);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!selectedFile) {
       setErrorMessage("Choose a video before uploading.");
+      return;
+    }
+    if (!apiToken.trim()) {
+      setErrorMessage("Paste an API token before uploading.");
       return;
     }
 
@@ -39,6 +59,7 @@ export default function UploadForm() {
     try {
       const response = await fetch(`${apiBaseUrl}/api/videos`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${apiToken.trim()}` },
         body: formData,
       });
 
@@ -58,6 +79,19 @@ export default function UploadForm() {
 
   return (
     <form className="upload-form" onSubmit={handleSubmit}>
+      <label className="token-field">
+        <span>API token</span>
+        <input
+          autoComplete="off"
+          name="apiToken"
+          placeholder="rivo_dev_creator_token"
+          type="password"
+          value={apiToken}
+          onChange={(event) => handleTokenChange(event.target.value)}
+        />
+        <small>Issued out of band. The development seed creates one.</small>
+      </label>
+
       <label className="file-picker">
         <span>Video file</span>
         <input
@@ -74,11 +108,18 @@ export default function UploadForm() {
         </p>
       ) : null}
 
-      <button className="primary-button" disabled={!selectedFile || isUploading} type="submit">
+      <button
+        className="primary-button"
+        disabled={!selectedFile || !apiToken.trim() || isUploading}
+        type="submit"
+      >
         {isUploading ? "Uploading…" : "Upload video"}
       </button>
 
-      <p className="upload-note">Local prototype limit: 1 GiB per request.</p>
+      <p className="upload-note">
+        Default prototype limit: 1 GiB per request. The API identifies the container from
+        the file itself, so an mp4 extension alone will not get a file accepted.
+      </p>
 
       {errorMessage ? <p className="status-message error-message">{errorMessage}</p> : null}
 
@@ -86,7 +127,9 @@ export default function UploadForm() {
         <div className="status-message success-message">
           <strong>Stored locally.</strong>
           <span>Video ID: {uploadResult.id}</span>
-          <span>{uploadResult.fileName}</span>
+          <span>
+            {uploadResult.fileName} · detected as {uploadResult.contentType}
+          </span>
         </div>
       ) : null}
     </form>
